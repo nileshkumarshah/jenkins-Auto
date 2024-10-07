@@ -1,0 +1,30 @@
+pipeline{
+    agent any
+
+    stages {
+        stage('Build') {
+            steps {
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/nileshkumarshah/jenkins-Auto.git']]])
+                bat 'clone git repository'
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+				script{                
+                	bat 'docker build -t  nileshshah/jenkinsautomate .'
+                }
+            }
+        }
+        stage('Push image to docker hub') {
+            steps {
+				script{                
+                	withCredentials([string(credentialsId: 'dockerhub-pwd', variable: 'dockerpwd')]) {
+						bat 'docker login --username shahnilesh --password-stdin ${dockerpwd}'
+					}
+					bat 'docker scan nileshshah/jenkinsautomate'
+					bat 'docker push nileshshah/jenkinsautomate'
+                }
+            }
+        }
+     }
+}
