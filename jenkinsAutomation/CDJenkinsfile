@@ -1,0 +1,82 @@
+pipeline {
+    agent any
+    environment {
+    AWS_ACCOUNT_ID='343153454363454'
+    AWS_DEFAULT_REGION='ap-south-1'
+    app='report'
+    IMAGE_REPO_NAME='stech-devops-repository'
+    IMAGE_TAG='account-${ImageNumber}'
+    REPOSITORY_URI = '${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${IMAGE_REPO_NAME}'
+    AWS_ACCESS_KEY_ID     = credentials('access_key')
+    AWS_SECRET_ACCESS_KEY = credentials('secret_key')
+    }
+    
+    stages{
+        stage('Clone Repo') {
+            steps {
+				checkout([$class: 'GitSCM', branches: [[name: '*/${Branch}']],
+				doGenerateSubmoduleConfigurations: true, extensions: [],
+				submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'BItBucket_devops_admin',
+				url: 'https://github.com/nileshkumarshah/jenkins-Auto.git']]])
+                }
+            }
+         stage('copy terraformfiles') {
+            steps{
+                script {
+                    sh 'cp -rp ${WORKSPACE}/${env}-variable.tf   ${WORKSPACE}/terraform/variable.tf'
+                    sh 'rm -rf *-variable.tf'                    
+                    sh 'cp ${WORKSPACE}/terraform/* .'
+
+                }
+            }
+        }
+        stage('deploy') {
+            steps{
+                script {
+                    sh 'export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}'
+                    sh 'export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}'
+                    sh 'export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}'
+                    sh 'terraform init'
+                    sh 'terraform validate'
+                    sh 'terraform plan -var="tag=${app}-${ImageNumber}"'
+                    sh 'terraform apply --auto-approve -var="tag=${app}-${ImageNumber}"'
+                }
+            }
+        }
+        stage('Service check')
+        {
+            steps{
+                script {
+                    sh 'sudo chmod +x statushealth.sh'
+                    sleep 60
+                    sh './statushealth.sh ${env}-${app} ${cluster_name}'
+
+                }
+            }
+        }
+    }
+    post {
+        always {
+            script {
+                if (currentBuild.currentResult == 'SUCCESS') {
+                    emailext subject: '$PROJECT_NAME - Build # $BUILD_NUMBER - SUCCESS!!!',
+                    body: '$DEFAULT_CONTENT',
+                    recipientProviders: [
+                    [$class: 'RequesterRecipientProvider']
+                    ],
+                    replyTo: '$DEFAULT_REPLYTO',
+                    to: 'finn.dev@stechstudio.com'
+                }
+                if (currentBuild.currentResult == 'FAILURE') {
+                    emailext subject: '$PROJECT_NAME - Build # $BUILD_NUMBER - FAILED!!!',
+                    body: '$DEFAULT_CONTENT',
+                    recipientProviders: [
+                    [$class: 'RequesterRecipientProvider']
+                    ],
+                    replyTo: '$DEFAULT_REPLYTO',
+                    to: 'finn.dev@stechstudio.com'
+                }
+            }
+        }
+    }
+}    
